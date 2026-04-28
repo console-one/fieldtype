@@ -19,8 +19,6 @@ export { concreteness } from "./concreteness.js";
 export type { ConcretenessResult, MissingReq } from "./concreteness.js";
 export { jsonSchemaToFieldType } from "./jsonschema.js";
 export * from "./schema.js";
-export { createScope, withScope, withScopeAsync } from './scope.js';
-export type { Scope } from './scope.js';
 export * from './domain.js';
 export type { Infer } from './infer.js';
 export {

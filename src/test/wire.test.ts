@@ -2,7 +2,7 @@ import { djb2, WireRegistry } from "@console-one/wire";
 import { ConstraintTypes } from "../constraint.js";
 import { FieldType } from "../type.js";
 import { types, validate } from "../builders.js";
-import { FTAdapter, FTAdapterSnapshot } from "@console-one/wire";
+import { FTAdapter, FTAdapterSnapshot } from "../wire.js";
 
 describe("key()", () => {
   it("produces a stable djb2 key over JSON.stringify(ft)", () => {

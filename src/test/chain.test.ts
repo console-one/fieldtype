@@ -83,7 +83,6 @@ describe('reduce', () => {
     let c = createChain('object');
     c = push(c, concrete('host', { type: 'literal', value: 'localhost' }));
     c = push(c, concrete('port', { type: 'literal', value: 8080 }));
-
     const { scope, resolved, unresolved } = reduce(c);
     expect(resolved).toEqual(['host', 'port']);
     expect(unresolved).toHaveLength(0);

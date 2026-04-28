@@ -399,7 +399,7 @@ export function makeFieldTypeHoistHandler(
       return name ? `${base}:named:${name}` : base;
     },
     // We explicitly visit the node here for aggregation, then return structural children.
-    deps(ft) {
+    dependencies(ft) {
       collector?.visit(ft);
       return ftDeps(ft);
     },
