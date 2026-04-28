@@ -1,6 +1,6 @@
 {
   "name": "@console-one/fieldtype",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CUE-inspired structural type system that doubles as a reactive rule engine: FieldType + Chain + HEAD. Types carry evaluation, merge, persistence, and scheduling policy as structural constraints. Every value, schema, or agent definition is a composition of five primitives.",
   "repository": {
     "type": "git",
