@@ -9,8 +9,9 @@ export type {
   SubscribeConstraint, ForkConstraint, VisibilityConstraint, DecoratorConstraint, AutoMergeConstraint,
   MountConstraint,
 } from "./constraint.js";
-export { FieldTypeBuilder, types, validate, extensionof, zodToFieldType } from "./builders.js";
-export type { ValidationOutcome } from "./builders.js";
+export { FieldTypeBuilder, types, extensionof, zodToFieldType } from "./builders.js";
+export { validate } from "./validate.js";
+export type { ValidationFault, ValidationResult } from "./validate.js";
 export { FieldTypeError } from "./error.js";
 export type { FieldTypeErrorCode } from "./error.js";
 export { FieldTypeEvent } from "./event.js";
@@ -34,8 +35,7 @@ export {
   compilationLens,
 } from './chain.js';
 export type { Chain } from './chain.js';
-export { ptr } from './ptr.js';
-export type { Ptr } from './ptr.js';
+export { parse, chainFromSyntax, fieldTypeFromExpression, fromCompactJSON } from './parse.js';
 export { createHead, defaultPostMergeHandler } from './head.js';
 export { electConstraints } from './headElect.js';
 export type { HEAD, HeadEvent, Gap, PostMergeHandler } from './head.js';

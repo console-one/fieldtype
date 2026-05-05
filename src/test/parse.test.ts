@@ -817,3 +817,155 @@ describe('edge cases', () => {
     expect((s as any).expr.value).toBe('line1\nline2');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. Parser extensions — `concrete` keyword, `<<` operator, function defs
+//    with `->`, and block expressions inside function bodies.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('concrete keyword (explicit)', () => {
+  it('parses `concrete X = "y"` as a concrete-level bind', () => {
+    const s = one('concrete X = "y"');
+    expect(s).toMatchObject({
+      type: 'bind', level: 'concrete', name: 'X',
+      expr: { type: 'literal', value: 'y' },
+    });
+  });
+
+  it('parses `concrete X: Type` as a concrete-level gap', () => {
+    const s = one('concrete X: string');
+    expect(s).toMatchObject({ type: 'bind', level: 'concrete', name: 'X' });
+  });
+});
+
+describe('<< operator', () => {
+  it('type-level: `string << values` produces call(<<)', () => {
+    const e = expr('type status = string << values');
+    expect(e).toMatchObject({
+      type: 'call', fn: '<<',
+      args: [{ type: 'name', id: 'string' }, { type: 'name', id: 'values' }],
+    });
+  });
+
+  it('value-level: `messages << newMessage` produces call(<<)', () => {
+    const e = expr('concrete accepted = messages << newMessage');
+    expect(e).toMatchObject({
+      type: 'call', fn: '<<',
+      args: [{ type: 'name', id: 'messages' }, { type: 'name', id: 'newMessage' }],
+    });
+  });
+
+  it('left-associative: `a << b << c` parses as `(a << b) << c`', () => {
+    const e = expr('concrete chained = a << b << c');
+    expect(e).toMatchObject({
+      type: 'call', fn: '<<',
+      args: [
+        { type: 'call', fn: '<<', args: [{ type: 'name', id: 'a' }, { type: 'name', id: 'b' }] },
+        { type: 'name', id: 'c' },
+      ],
+    });
+  });
+
+  it('binds tighter than `&`', () => {
+    const e = expr('type t = a & b << c');
+    expect(e).toMatchObject({
+      type: 'intersect',
+      left: { type: 'name', id: 'a' },
+      right: { type: 'call', fn: '<<', args: [{ type: 'name', id: 'b' }, { type: 'name', id: 'c' }] },
+    });
+  });
+});
+
+describe('function definitions (->)', () => {
+  it('no-arg: `() -> [block]` produces call(fn) with empty params', () => {
+    const e = expr(`concrete f = () -> [
+      concrete x = 1
+    ]`);
+    expect(e.type).toBe('call');
+    expect((e as any).fn).toBe('fn');
+    expect((e as any).args[0]).toMatchObject({ type: 'object', properties: {} });
+    expect((e as any).args[1]).toMatchObject({ type: 'call', fn: 'block' });
+  });
+
+  it('typed-param: `(chatID: string) -> [block]` carries param shape', () => {
+    const e = expr(`concrete g = (chatID: string) -> [
+      concrete y = 2
+    ]`);
+    const params = (e as any).args[0];
+    expect(params.type).toBe('object');
+    expect(Object.keys(params.properties)).toContain('chatID');
+    expect(params.properties.chatID).toMatchObject({ type: 'name', id: 'string' });
+  });
+
+  it('multi-param: `(a: T, b: U) -> [block]`', () => {
+    const e = expr(`concrete h = (a: string, b: number) -> [
+      concrete z = 3
+    ]`);
+    const params = (e as any).args[0];
+    expect(Object.keys(params.properties).sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('block expressions [stmt; stmt; ...]', () => {
+  it('contains multiple statements wrapped as stmt:* calls', () => {
+    const e = expr(`concrete h = () -> [
+      concrete a = 1
+      concrete b = 2
+      export { a, b }
+    ]`);
+    const block = (e as any).args[1];
+    expect(block.type).toBe('call');
+    expect(block.fn).toBe('block');
+    expect(block.args).toHaveLength(3);
+    expect(block.args[0].fn).toBe('stmt:concrete');
+    expect(block.args[1].fn).toBe('stmt:concrete');
+    expect(block.args[2].fn).toBe('stmt:export');
+  });
+
+  it('blocks at top-level expression position dispatch on leading keyword', () => {
+    // `[concrete X = 1]` is a block, not an array literal
+    const e = expr(`type B = [concrete inner = "x"]`);
+    expect(e).toMatchObject({ type: 'call', fn: 'block' });
+  });
+
+  it('preserves array literal behavior when no statement keyword leads', () => {
+    const e = expr(`type Tup = [string, number]`);
+    expect(e).toMatchObject({ type: 'call', fn: 'Tuple' });
+  });
+});
+
+describe('full chat-scope-shaped chain text', () => {
+  it('parses an end-to-end scope with imports, gaps, function defs, and exports', () => {
+    const text = `
+import { ChatConfigScope } from './schemas'
+
+concrete configs: ChatConfigScope
+concrete messageStatusTypes = configs.chatstatustypes | "idle" | "streaming" | "disposed"
+
+type status = string << messageStatusTypes
+
+concrete chatID: string
+
+concrete headState = (chatID: string) -> [
+  concrete chatpath = join("chats", chatID)
+  concrete resolution = ref(chatpath)
+  type topState = resolution.messages
+
+  type load = (message: any) -> [
+    concrete accepted = resolution.messages << message
+    export { accepted }
+  ]
+
+  export { resolution }
+]
+
+concrete that = headState
+export { that }
+`;
+    const stmts = parse(text);
+    // 1 import + 6 binds + 1 export = 8
+    expect(stmts).toHaveLength(8);
+    expect(stmts[0].type).toBe('import');
+    expect(stmts[stmts.length - 1].type).toBe('export');
+  });
+});

@@ -1,0 +1,53 @@
+
+type that = any
+
+
+type three = [
+    ...string,
+
+]
+
+type this = () -> [
+
+    import { ChatConfigScope } from './schemas'// if that happens to be correct and we actually know where it is.
+    concrete configs: ChatConfigScope; // require concrete implementation of *type* ChatConfigScope to proceed 
+    concrete messageStatusTypes = configs.chatstatustypes | ('idle' | 'streaming' | 'disposed')
+
+    type status = (string << messageStatusTypes )
+    concrete chatID = string
+
+    concrete headState = ((chatID: string) -> [
+        [[ Does this do anyhing? :  term two ]]
+        concrete chatpath = join('chats', chatID) 
+        concrete resolution = ref(chatpath, { messages: ([...ChatMessage] & max 25), snapshots: [...ChatState] & max 5 }, path: returnType(pwd()) );
+        type topState = resolution.messages[-1]
+        type characterlimit = configs.characterLimit | 50000
+        type load = (message) -> [
+            concrete accepted = resolution.messages << message
+            that = this 
+        ]
+        returnvalue = [ 
+            state: headState
+            next: load
+            status: status 
+        ]
+        concrete body = () -> [
+            // get immediately evaluated, only not if assigned to a type
+            concrete initialmessage = concrete (topState | (configs.initialstate | [])) 
+            concrete prevMessageState = [ prevState = concrete (() -> [ prevState = resolution.messages[-2] ]) | [] ] 
+            concrete prevSnapshotState = [ prevSnapshot = concrete (() -> [ prevSnapshot = resolution.snapshots[-1] ]) | [] ] 
+            export (initialmessage && prevMessageState) 
+        ]
+        export [
+            concrete status = status
+            concrete body = omit(body, 'prevMessageState') & omit(body, 'prevSnapshotState'), 
+            concrete idx = pick(body, 'prevMessageState') & pick(body, 'prevSnapshotState') && pick(resolution, 'path') 
+        ] 
+    ] : )
+
+    export headState
+] : 
+
+concrete that = this
+export that;
+

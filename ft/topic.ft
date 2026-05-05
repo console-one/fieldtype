@@ -1,0 +1,19 @@
+
+import { typetype } from 'stdlib'
+
+type userID = object << [[userID: "User id type" ]]
+type verifier = ((input: userID, key: any) -> admissibility) << [[admissibilityCheck: "Admisibility Check" ]]
+type narrative = string
+
+
+type createTopicInputs = [
+    type user = userID
+    type name = string & lt(chars, 120)
+    type description = narrative & lt(chars, 300) // however the constraint here is supposed to be represented
+    << typetype('kit', any)
+    export [
+        = string & lt(chars, 120)
+        << ([ description = narrative & lt(chars, 300) ] | [])
+        << ([ key = narrative & lt(chars, 300) ] | []])
+    ]
+]

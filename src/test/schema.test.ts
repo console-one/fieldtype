@@ -19,7 +19,7 @@ describe("FieldTypeEvent schema", () => {
       });
 
       const res = validate(PatchFieldTypeEventSchema, ev);
-      expect(res.status).toBe("valid");
+      expect(res.ok).toBe(true);
     });
 
     it("accepts a valid patch event with attributes as an array", () => {
@@ -33,7 +33,7 @@ describe("FieldTypeEvent schema", () => {
       });
 
       const res = validate(PatchFieldTypeEventSchema, ev);
-      expect(res.status).toBe("valid");
+      expect(res.ok).toBe(true);
     });
 
     it("rejects patch event with wrong type literal", () => {
@@ -44,7 +44,7 @@ describe("FieldTypeEvent schema", () => {
         target: "prev",
       };
       const res = validate(PatchFieldTypeEventSchema, bad);
-      expect(res.status).toBe("invalid");
+      expect(res.ok).toBe(false);
     });
 
     it("rejects patch event missing id", () => {
@@ -55,7 +55,7 @@ describe("FieldTypeEvent schema", () => {
       delete bad.id;
 
       const res = validate(PatchFieldTypeEventSchema, bad);
-      expect(res.status).toBe("invalid");
+      expect(res.ok).toBe(false);
     });
   });
 
@@ -68,7 +68,7 @@ describe("FieldTypeEvent schema", () => {
         extensions: [],
       });
       const res = validate(CreateFieldTypeEventSchema, ev);
-      expect(res.status).toBe("valid");
+      expect(res.ok).toBe(true);
     });
 
     it("rejects create event with unsupported fieldtype", () => {
@@ -78,7 +78,7 @@ describe("FieldTypeEvent schema", () => {
       }) as any;
 
       const res = validate(CreateFieldTypeEventSchema, ev);
-      expect(res.status).toBe("invalid");
+      expect(res.ok).toBe(false);
     });
 
     it("rejects create event when id is missing", () => {
@@ -89,7 +89,7 @@ describe("FieldTypeEvent schema", () => {
       delete ev.id;
 
       const res = validate(CreateFieldTypeEventSchema, ev);
-      expect(res.status).toBe("invalid");
+      expect(res.ok).toBe(false);
     });
   });
 
@@ -98,8 +98,8 @@ describe("FieldTypeEvent schema", () => {
       const state = FieldTypeEvent.state.create({ fieldtype: "any" });
       const patch = FieldTypeEvent.patch.create({ target: "id-1" });
 
-      expect(validate(FieldTypeEventSchema, state).status).toBe("valid");
-      expect(validate(FieldTypeEventSchema, patch).status).toBe("valid");
+      expect(validate(FieldTypeEventSchema, state).ok).toBe(true);
+      expect(validate(FieldTypeEventSchema, patch).ok).toBe(true);
     });
   });
 });

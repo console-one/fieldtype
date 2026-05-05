@@ -617,6 +617,76 @@ function extractValue(expr: Expression): unknown {
 }
 
 /**
+ * Evaluate a `block` call: decode its contained `stmt:*` args into bindings
+ * in a child scope (parent bindings remain visible by inheritance), then
+ * project the block's value as an object containing either the explicitly
+ * exported names or all bindings declared inside the block.
+ *
+ * The block's bindings are evaluated in order, with later statements seeing
+ * earlier statements' values. This is the same semantic as a top-level
+ * chain, just at expression position.
+ */
+function evaluateBlock(expr: Expression, scope: Scope): EvalResult {
+  if (expr.type !== 'call' || expr.fn !== 'block') {
+    return { concrete: false, value: undefined };
+  }
+
+  // Child scope inheriting parent bindings; child writes don't leak upward.
+  const childBindings = new Map(scope.bindings);
+  const childScope: Scope = { ...scope, bindings: childBindings };
+
+  let exportFilter: Set<string> | undefined;
+  const declaredInBlock = new Set<string>();
+
+  for (const stmtCall of expr.args) {
+    if (stmtCall.type !== 'call') continue;
+    const stmtFn = (stmtCall as any).fn;
+    const stmtArgs = ((stmtCall as any).args ?? []) as Expression[];
+
+    if (stmtFn === 'stmt:concrete' || stmtFn === 'stmt:type') {
+      const nameExpr = stmtArgs[0];
+      const valExpr = stmtArgs[1];
+      if (!nameExpr || nameExpr.type !== 'literal') continue;
+      const name = (nameExpr as any).value;
+      if (typeof name !== 'string' || !valExpr) continue;
+
+      const valResult = evaluateExpr(valExpr, childScope);
+      childBindings.set(name, {
+        level: stmtFn === 'stmt:concrete' ? 'concrete' : 'type',
+        resolved: valResult.concrete,
+        typeResolved: true,
+        value: valResult.value,
+        expr: valExpr,
+      });
+      declaredInBlock.add(name);
+    } else if (stmtFn === 'stmt:export') {
+      const namesExpr = stmtArgs[0];
+      if (namesExpr?.type === 'literal') {
+        const v = (namesExpr as any).value;
+        if (Array.isArray(v)) {
+          if (!exportFilter) exportFilter = new Set();
+          for (const n of v) exportFilter.add(String(n));
+        }
+        // '*' or non-array: leave exportFilter undefined → export all
+      }
+    }
+    // stmt:import / stmt:annotate are no-ops at this evaluation layer
+  }
+
+  // Project the block's value: { name → value } for every binding declared
+  // inside the block (filtered by exportFilter when present). Bindings with
+  // unresolved values fall through (consumer can re-evaluate later).
+  const result: Record<string, unknown> = {};
+  for (const name of declaredInBlock) {
+    if (exportFilter && !exportFilter.has(name)) continue;
+    const b = childBindings.get(name);
+    if (!b || !b.resolved) continue;
+    result[name] = b.value;
+  }
+  return { concrete: true, value: result };
+}
+
+/**
  * Evaluate an expression against a Scope, resolving names, calls, and
  * compositions. Returns { concrete, value } — concrete is false when any
  * sub-expression cannot be resolved (ref, unbound name, unresolved arg).
@@ -644,6 +714,89 @@ export function evaluateExpr(
     }
 
     case 'call': {
+      // ── Function definition: `fn` produces a closure capturing the outer
+      //    scope. When invoked, the closure binds positional args to the
+      //    param names declared in `paramsExpr` (an object expression whose
+      //    keys are the param names), then evaluates the body in a child
+      //    scope. Body is typically a `block` call.
+      if (expr.fn === 'fn') {
+        const paramsExpr = expr.args[0];
+        const bodyExpr = expr.args[1];
+        const paramNames = paramsExpr && paramsExpr.type === 'object'
+          ? Object.keys((paramsExpr as any).properties)
+          : [];
+        const captured = scope;
+        const closure = (...args: unknown[]) => {
+          const childBindings = new Map(captured.bindings);
+          for (let i = 0; i < paramNames.length; i++) {
+            childBindings.set(paramNames[i], {
+              level: 'concrete',
+              resolved: true,
+              typeResolved: true,
+              value: args[i],
+              expr: { type: 'literal', value: args[i] },
+            });
+          }
+          const childScope: Scope = { ...captured, bindings: childBindings };
+          const r = evaluateExpr(bodyExpr, childScope);
+          return r.concrete ? r.value : undefined;
+        };
+        return { concrete: true, value: closure };
+      }
+
+      // ── Block expression: walk the contained `stmt:*` args, build an
+      //    object of {name → value} for each bind statement, return either
+      //    the explicit `export {...}` filter or all bindings declared in
+      //    the block.
+      if (expr.fn === 'block') {
+        return evaluateBlock(expr, scope);
+      }
+
+      // ── Transclusion (`<<`): modify LHS's structure by incorporating RHS.
+      //    Array LHS   → push RHS at the tail
+      //    Object LHS  → shallow-merge RHS into LHS
+      //    Number LHS  → sum (lattice meet of two number values is their
+      //                  sum; for accumulators this IS += and is the
+      //                  reason indexSpec bodies use `<<` as the
+      //                  accumulator op without a special-case op kind)
+      //    String LHS  → concat (string monoid; mirrors number's sum)
+      //    Boolean LHS → OR (truth monoid; AND would be the dual; OR is
+      //                  the common case for "any of these accumulated")
+      //    Other       → RHS wins (no defined meet)
+      //    No reducer fires. The result is the LHS's kind, transformed.
+      if (expr.fn === '<<') {
+        const lhsResult = evaluateExpr(expr.args[0], scope);
+        const rhsResult = evaluateExpr(expr.args[1], scope);
+        if (!lhsResult.concrete || !rhsResult.concrete)
+          return { concrete: false, value: undefined };
+        const lhs = lhsResult.value;
+        const rhs = rhsResult.value;
+        if (Array.isArray(lhs)) {
+          return { concrete: true, value: [...lhs, rhs] };
+        }
+        if (lhs && typeof lhs === 'object' && rhs && typeof rhs === 'object') {
+          return { concrete: true, value: { ...lhs as any, ...rhs as any } };
+        }
+        if (typeof lhs === 'number' && typeof rhs === 'number') {
+          return { concrete: true, value: lhs + rhs };
+        }
+        if (typeof lhs === 'string' && typeof rhs === 'string') {
+          return { concrete: true, value: lhs + rhs };
+        }
+        if (typeof lhs === 'boolean' && typeof rhs === 'boolean') {
+          return { concrete: true, value: lhs || rhs };
+        }
+        return { concrete: true, value: rhs };
+      }
+
+      // ── stmt:* calls only appear inside `block` bodies and are decoded
+      //    there. Standalone evaluation isn't meaningful — fall through to
+      //    non-concrete.
+      if (typeof expr.fn === 'string' && expr.fn.startsWith('stmt:')) {
+        return { concrete: false, value: undefined };
+      }
+
+      // ── Existing dispatch: resolve fn from scope, apply args. ──────────────
       const fnResult = typeof expr.fn === 'string'
         ? evaluateExpr({ type: 'name', id: expr.fn }, scope)
         : evaluateExpr(expr.fn, scope);

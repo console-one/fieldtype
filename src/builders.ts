@@ -423,20 +423,10 @@ export function toFieldType(input: unknown, opts?: any): FieldType {
 
 
 
-/* ---------- 6. Basic validator (no pending refs) ---------------- */
-
-export type ValidationError = { path: (string | number)[]; message: string };
-export type ValidationOutcome =
-  | { status: "valid" }
-  | { status: "invalid"; errors: ValidationError[] };
-
-export function validate(node: FieldType, data: unknown): ValidationOutcome {
-  const errs: ValidationError[] = [];
-  walk(node, data, [], errs);
-  return errs.length
-    ? { status: "invalid", errors: errs }
-    : { status: "valid" };
-}
+// Runtime data validator moved to ./validate.ts — re-exported here so the
+// historical `import { validate } from "./builders"` paths still resolve.
+export { validate } from "./validate.js";
+export type { ValidationFault, ValidationResult } from "./validate.js";
 
 /* --- recursive walker ------------------------------------------ */
 

@@ -38,9 +38,9 @@ export class ParseError extends Error {
 
 type TokenType =
   | 'ident' | 'string' | 'number' | 'boolean' | 'null'
-  | 'type' | 'import' | 'export' | 'from' | 'except' | 'not' | 'int' | 'extends'
+  | 'type' | 'concrete' | 'import' | 'export' | 'from' | 'except' | 'not' | 'int' | 'extends'
   | '=' | ':' | '?' | '&' | '|' | ',' | '.' | '(' | ')' | '{' | '}' | '[' | ']'
-  | '*' | '>=' | '<=' | '>' | '<' | '=>' | '...' | '=~' | '%'
+  | '*' | '>=' | '<=' | '>' | '<' | '=>' | '->' | '<<' | '...' | '=~' | '%'
   | '---' | 'annotate_body'
   | 'newline' | 'eof';
 
@@ -51,7 +51,7 @@ type Token = {
   col: number;
 };
 
-const KEYWORDS = new Set<TokenType>(['type', 'import', 'export', 'from', 'except', 'not', 'int', 'extends']);
+const KEYWORDS = new Set<TokenType>(['type', 'concrete', 'import', 'export', 'from', 'except', 'not', 'int', 'extends']);
 const PRIMITIVE_KEYWORDS = new Set(['any', 'never', 'boolean', 'null', 'string', 'number', 'int']);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,6 +143,10 @@ function tokenize(input: string): Token[] {
     if (ch === '=' && peekAt(1) === '~') { advance(); advance(); emit('=~', '=~', startLine, startCol); continue; }
     if (ch === '>' && peekAt(1) === '=') { advance(); advance(); emit('>=', '>=', startLine, startCol); continue; }
     if (ch === '<' && peekAt(1) === '=') { advance(); advance(); emit('<=', '<=', startLine, startCol); continue; }
+    // Function-body arrow: -> (distinct from => which is the function-type arrow)
+    if (ch === '-' && peekAt(1) === '>') { advance(); advance(); emit('->', '->', startLine, startCol); continue; }
+    // Write/append/narrow operator: <<
+    if (ch === '<' && peekAt(1) === '<') { advance(); advance(); emit('<<', '<<', startLine, startCol); continue; }
 
     // Single-char operators
     if ('=:?&|,(){}[]*%><'.includes(ch)) {
@@ -277,9 +281,18 @@ class Parser {
       case 'import': return this.parseImport();
       case 'export': return this.parseExport();
       case 'type': return this.parseTypeBind();
+      case 'concrete': return this.parseConcreteBind();
       case '---': return this.parseAnnotation();
       default: return this.parseBindOrRef();
     }
+  }
+
+  // ── concrete bind ── (explicit form; `concrete X = Y` is equivalent to the
+  //   default `X = Y` since concrete is the default level. Adds the keyword
+  //   form for clarity in chain text.)
+  private parseConcreteBind(): Statement {
+    this.expect('concrete');
+    return this.parseBindOrRef();
   }
 
   // ── import ──
@@ -446,11 +459,25 @@ class Parser {
 
   // Intersect (&)
   private parseIntersect(): Expression {
-    let left = this.parseUnary();
+    let left = this.parseWrite();
     while (this.peek().type === '&') {
       this.advance();
-      const right = this.parseUnary();
+      const right = this.parseWrite();
       left = { type: 'intersect', left, right };
+    }
+    return left;
+  }
+
+  // Write/narrow operator (<<). Tighter than &, looser than `not`.
+  // Encodes "narrow LHS by RHS" — used for type-level membership refinement
+  // (`string << statusTypes`) and value-level append/push
+  // (`messages << newMessage`). Left-associative.
+  private parseWrite(): Expression {
+    let left = this.parseUnary();
+    while (this.peek().type === '<<') {
+      this.advance();
+      const right = this.parseUnary();
+      left = { type: 'call', fn: '<<', args: [left, right] };
     }
     return left;
   }
@@ -611,7 +638,8 @@ class Parser {
       return { type: 'name', id: tok.value };
     }
 
-    // Parenthesized expression, or function type (Param) => Return
+    // Parenthesized expression, function type (Param) => Return,
+    // or function definition (params) -> [block]
     if (tok.type === '(') {
       this.advance();
       this.skipNewlines();
@@ -625,8 +653,36 @@ class Parser {
           const ret = this.parseExpression();
           return { type: 'call', fn: '=>', args: [{ type: 'name', id: 'any' }, ret] };
         }
+        // () -> [block] is a no-arg function definition
+        if (this.peek().type === '->') {
+          this.advance();
+          const body = this.parseBlockExpression();
+          return { type: 'call', fn: 'fn', args: [{ type: 'object', properties: {} }, body] };
+        }
         // Just empty parens — unit/void
         return { type: 'object', properties: {} };
+      }
+
+      // Parameter list: (name: Type [, name: Type]*) — a function definition
+      // or named-param function type. Detected by `ident` followed by `:`.
+      const isParamList = this.peek().type === 'ident' &&
+        this.tokens[this.pos + 1]?.type === ':';
+      if (isParamList) {
+        const params = this.parseParamList();
+        this.expect(')');
+        // Function definition body
+        if (this.peek().type === '->') {
+          this.advance();
+          const body = this.parseBlockExpression();
+          return { type: 'call', fn: 'fn', args: [params, body] };
+        }
+        // Function type with named param
+        if (this.peek().type === '=>') {
+          this.advance();
+          const ret = this.parseExpression();
+          return { type: 'call', fn: '=>', args: [params, ret] };
+        }
+        return params;
       }
 
       const inner = this.parseExpression();
@@ -638,6 +694,13 @@ class Parser {
         this.advance();
         const ret = this.parseExpression();
         return { type: 'call', fn: '=>', args: [inner, ret] };
+      }
+
+      // Function definition with anonymous typed param: (Type) -> [block]
+      if (this.peek().type === '->') {
+        this.advance();
+        const body = this.parseBlockExpression();
+        return { type: 'call', fn: 'fn', args: [inner, body] };
       }
 
       return inner;
@@ -736,11 +799,21 @@ class Parser {
     return result;
   }
 
-  // ── array / tuple ──
+  // ── array / tuple / block ──
 
   private parseArrayOrTuple(): Expression {
     this.expect('[');
     this.skipNewlines();
+
+    // Block expression: [concrete X = Y; type T = ...; export ...]
+    // Disambiguated by leading statement keyword. Body is a sequence of
+    // statements wrapped as call expressions for embedding in the AST.
+    const next = this.peek();
+    if (next.type === 'concrete' || next.type === 'type' ||
+        next.type === 'import' || next.type === 'export' ||
+        next.type === '---') {
+      return this.parseBlockExpressionBody();
+    }
 
     // Empty array: []
     if (this.peek().type === ']') {
@@ -804,6 +877,101 @@ class Parser {
 
     // Tuple
     return { type: 'call', fn: 'Tuple', args: elements };
+  }
+
+  // ── parameter list, block expression, statement-as-expression ──
+
+  /** Parse `name: Type [, name: Type]*` as an object expression with the
+   *  parameter names as properties keyed to their type expressions.
+   *  Caller is expected to consume the surrounding parens. */
+  private parseParamList(): Expression {
+    const properties: Record<string, Expression> = {};
+    while (this.peek().type !== ')' && !this.isAtEnd()) {
+      this.skipNewlines();
+      if (this.peek().type === ')') break;
+      const key = this.expectIdent();
+      this.expect(':');
+      properties[key] = this.parseExpression();
+      if (this.peek().type === ',') this.advance();
+      this.skipNewlines();
+    }
+    return { type: 'object', properties };
+  }
+
+  /** Parse `[ stmt; stmt; ...; stmt ]` as a block expression. Each statement
+   *  is wrapped via statementToCall so the block fits in the Expression AST.
+   *  Consumes the leading `[`. */
+  private parseBlockExpression(): Expression {
+    this.expect('[');
+    return this.parseBlockExpressionBody();
+  }
+
+  /** Same as parseBlockExpression but assumes `[` has already been consumed.
+   *  Used by parseArrayOrTuple when it dispatches to block based on the
+   *  leading token. */
+  private parseBlockExpressionBody(): Expression {
+    this.skipNewlines();
+    const stmts: Expression[] = [];
+    while (this.peek().type !== ']' && !this.isAtEnd()) {
+      this.skipNewlines();
+      if (this.peek().type === ']') break;
+      const stmt = this.parseStatement();
+      stmts.push(this.statementToCall(stmt));
+      this.skipNewlines();
+    }
+    this.expect(']');
+    return { type: 'call', fn: 'block', args: stmts };
+  }
+
+  /** Convert a Statement to a call-expression so it can embed inside a block
+   *  expression. Encoding scheme — fn names tagged 'stmt:*':
+   *    bind   → `stmt:concrete` or `stmt:type` with [name-literal, expr,
+   *             optional 'optional', optional default-expr]
+   *    import → `stmt:import` with [source-literal, names-literal-array?]
+   *    export → `stmt:export` with [names-literal | '*']
+   *    annotate → `stmt:annotate` with [body-literal] */
+  private statementToCall(stmt: Statement): Expression {
+    switch (stmt.type) {
+      case 'bind': {
+        const args: Expression[] = [
+          { type: 'literal', value: stmt.name },
+          stmt.expr,
+        ];
+        if ((stmt as any).scope === 'optional') {
+          args.push({ type: 'literal', value: 'optional' });
+        }
+        if ((stmt as any).default !== undefined) {
+          args.push((stmt as any).default);
+        }
+        return { type: 'call', fn: `stmt:${stmt.level}`, args };
+      }
+      case 'import': {
+        const args: Expression[] = [
+          { type: 'literal', value: (stmt as any).source ?? '' },
+        ];
+        if ((stmt as any).names) {
+          args.push({ type: 'literal', value: (stmt as any).names });
+        }
+        return { type: 'call', fn: 'stmt:import', args };
+      }
+      case 'export': {
+        const args: Expression[] = [
+          { type: 'literal', value: (stmt as any).names ?? '*' },
+        ];
+        if ((stmt as any).except) {
+          args.push({ type: 'literal', value: (stmt as any).except });
+        }
+        return { type: 'call', fn: 'stmt:export', args };
+      }
+      case 'annotate': {
+        return {
+          type: 'call', fn: 'stmt:annotate',
+          args: [{ type: 'literal', value: (stmt as any).body }],
+        };
+      }
+      default:
+        return { type: 'call', fn: 'stmt:unknown', args: [] };
+    }
   }
 
   // ── helpers ──
@@ -981,6 +1149,58 @@ function callExprToFieldType(fn: string | Expression, args: Expression[]): Field
     if (args[0]) ft = ft.param(fieldTypeFromExpression(args[0]));
     if (args[1]) ft = ft.returns(fieldTypeFromExpression(args[1]));
     return ft.save();
+  }
+
+  // Function definition: (params) -> [block]
+  // Produces a function FT where param = params shape and returns = block shape.
+  // The block's properties form the function's exported return type.
+  if (fn === 'fn') {
+    let ft = FieldType.function.create();
+    if (args[0]) ft = ft.param(fieldTypeFromExpression(args[0]));
+    if (args[1]) ft = ft.returns(fieldTypeFromExpression(args[1]));
+    return ft.save();
+  }
+
+  // Block expression: [ concrete X = ...; type T = ...; export {...} ]
+  // Reduces to an object FT whose properties are the contained binds.
+  // stmt:export controls visibility; for now the FT carries all properties
+  // regardless of export filter (a richer projection layer can prune later).
+  if (fn === 'block') {
+    let ft = FieldType.object.create();
+    for (const stmtCall of args) {
+      if (stmtCall.type !== 'call') continue;
+      const stmtFn = (stmtCall as any).fn;
+      const stmtArgs = ((stmtCall as any).args ?? []) as Expression[];
+      if (stmtFn === 'stmt:concrete' || stmtFn === 'stmt:type') {
+        const nameExpr = stmtArgs[0];
+        const valExpr = stmtArgs[1];
+        const name = nameExpr && nameExpr.type === 'literal' ? (nameExpr as any).value : undefined;
+        if (typeof name === 'string' && name && valExpr) {
+          const propType = fieldTypeFromExpression(valExpr);
+          ft = ft.property(name, propType);
+        }
+      }
+      // stmt:import / stmt:export / stmt:annotate don't contribute properties
+    }
+    return ft.save();
+  }
+
+  // Write / narrow operator: <<
+  // Type-level semantics: meet (compose) of LHS with RHS. For
+  //   `string << statusValues` this gives a string narrowed by statusValues.
+  // Value-level semantics (e.g. `messages << newMessage`) are handled by
+  //   chain reduction's expression evaluator, not at the FT-shape layer.
+  if (fn === '<<') {
+    const lhs = args[0] ? fieldTypeFromExpression(args[0]) : FieldType.any.create();
+    const rhs = args[1] ? fieldTypeFromExpression(args[1]) : FieldType.any.create();
+    return FieldType.compose(lhs, rhs);
+  }
+
+  // Statement-as-call (stmt:*) — emitted by the parser when statements appear
+  // inside a block expression. They are decoded by the `block` handler above
+  // and have no standalone FT shape.
+  if (typeof fn === 'string' && fn.startsWith('stmt:')) {
+    return FieldType.any.create();
   }
 
   // Array: Array(elementType) — from [...T] syntax

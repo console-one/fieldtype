@@ -178,28 +178,30 @@ describe("Block constraints", () => {
       const result = validate(schema, [
         { name: "model", value: "gpt-4" },
       ]);
-      expect(result.status).toBe("valid");
+      expect(result.ok).toBe(true);
     });
 
     it("invalid: required element missing", () => {
       const result = validate(schema, [
         { name: "prompt", value: "hello" },
-      ]);
-      expect(result.status).toBe("invalid");
-      if (result.status === "invalid") {
-        expect(result.errors.some(e => e.message.includes('at least 1') && e.message.includes('model'))).toBe(true);
-      }
+      ]) as { ok: false; faults: any[] };
+      expect(result.ok).toBe(false);
+      expect(result.faults.some(f => {
+        const c = f.constraint;
+        return c?.constrainttype === 'named' && c.key === 'model' && f.missing;
+      })).toBe(true);
     });
 
     it("invalid: duplicate unique element", () => {
       const result = validate(schema, [
         { name: "model", value: "gpt-4" },
         { name: "model", value: "gpt-3.5" },
-      ]);
-      expect(result.status).toBe("invalid");
-      if (result.status === "invalid") {
-        expect(result.errors.some(e => e.message.includes('at most 1') && e.message.includes('model'))).toBe(true);
-      }
+      ]) as { ok: false; faults: any[] };
+      expect(result.ok).toBe(false);
+      expect(result.faults.some(f => {
+        const c = f.constraint;
+        return c?.constrainttype === 'named' && c.key === 'model' && !f.missing;
+      })).toBe(true);
     });
 
     it("invalid: named element fails value type constraint", () => {
@@ -212,12 +214,12 @@ describe("Block constraints", () => {
 
       const result = validate(strictSchema, [
         { name: "model", value: "not-a-number" },
-      ]);
-      expect(result.status).toBe("invalid");
-      if (result.status === "invalid") {
-        // Should report that 'value' is not a number
-        expect(result.errors.some(e => e.message.includes("expected number"))).toBe(true);
-      }
+      ]) as { ok: false; faults: any[] };
+      expect(result.ok).toBe(false);
+      // Should report a number type mismatch on the 'value' field
+      expect(result.faults.some(f =>
+        f.typeName === "number" && f.path[f.path.length - 1] === "value",
+      )).toBe(true);
     });
 
     it("valid: optional element missing is OK", () => {
@@ -229,7 +231,7 @@ describe("Block constraints", () => {
       const result = validate(optSchema, [
         { name: "model", value: "gpt-4" },
       ]);
-      expect(result.status).toBe("valid");
+      expect(result.ok).toBe(true);
     });
 
     it("valid: optional element present is OK", () => {
@@ -242,7 +244,7 @@ describe("Block constraints", () => {
         { name: "model", value: "gpt-4" },
         { name: "description", value: "A helpful model" },
       ]);
-      expect(result.status).toBe("valid");
+      expect(result.ok).toBe(true);
     });
   });
 
@@ -255,12 +257,12 @@ describe("Block constraints", () => {
       const valid = validate(schema, [
         { kind: { type: "llm" }, data: 42 },
       ]);
-      expect(valid.status).toBe("valid");
+      expect(valid.ok).toBe(true);
 
       const invalid = validate(schema, [
         { kind: { type: "rest" }, data: 42 },
       ]);
-      expect(invalid.status).toBe("invalid");
+      expect(invalid.ok).toBe(false);
     });
   });
 
@@ -278,7 +280,7 @@ describe("Block constraints", () => {
         { name: "y", value: 1 },
       ]);
       // The ref is not a number, so the cardinality check is skipped
-      expect(result.status).toBe("valid");
+      expect(result.ok).toBe(true);
     });
   });
 
@@ -296,13 +298,13 @@ describe("Block constraints", () => {
         { type: "annotation" },
         { type: "metadata" },
       ]);
-      expect(r1.status).toBe("valid");
+      expect(r1.ok).toBe(true);
 
       // Invalid: model missing (named constraint fails)
       const r2 = validate(schema, [
         { type: "annotation" },
       ]);
-      expect(r2.status).toBe("invalid");
+      expect(r2.ok).toBe(false);
     });
 
     it("exactly(2) enforces precise count", () => {
@@ -310,9 +312,9 @@ describe("Block constraints", () => {
         types.exactly(2, types.string()),
       ]);
 
-      expect(validate(schema, ["a", "b"]).status).toBe("valid");
-      expect(validate(schema, ["a"]).status).toBe("invalid");
-      expect(validate(schema, ["a", "b", "c"]).status).toBe("invalid");
+      expect(validate(schema, ["a", "b"]).ok).toBe(true);
+      expect(validate(schema, ["a"]).ok).toBe(false);
+      expect(validate(schema, ["a", "b", "c"]).ok).toBe(false);
     });
   });
 
@@ -323,7 +325,7 @@ describe("Block constraints", () => {
         types.zeroToMany(types.any()),
       ]);
 
-      expect(validate(schema, []).status).toBe("valid");
+      expect(validate(schema, []).ok).toBe(true);
     });
 
     it("empty array fails against schema with required named element", () => {
@@ -332,7 +334,7 @@ describe("Block constraints", () => {
       ]);
 
       const result = validate(schema, []);
-      expect(result.status).toBe("invalid");
+      expect(result.ok).toBe(false);
     });
   });
 });

@@ -188,9 +188,9 @@ describe("types.tuple() sugar", () => {
     expect(acc.items.max).toBe(3);
 
     // validation sanity
-    expect(validate(t, ["a", 1, "c"]).status).toBe("valid");
-    expect(validate(t, ["a", "b", "c"]).status).toBe("invalid");
-    expect(validate(t, ["a", 1]).status).toBe("invalid");
+    expect(validate(t, ["a", 1, "c"]).ok).toBe(true);
+    expect(validate(t, ["a", "b", "c"]).ok).toBe(false);
+    expect(validate(t, ["a", 1]).ok).toBe(false);
   });
 
   it("tuple(A,B,optional(C)) keeps index typing; min=2, max=3", () => {
@@ -207,10 +207,10 @@ describe("types.tuple() sugar", () => {
     expect(acc.items.min).toBe(2);
     expect(acc.items.max).toBe(3);
 
-    expect(validate(t, ["x", 2]).status).toBe("valid");
-    expect(validate(t, ["x", 2, "z"]).status).toBe("valid");
-    expect(validate(t, ["x"]).status).toBe("invalid");
-    expect(validate(t, ["x", 2, 999]).status).toBe("invalid");
+    expect(validate(t, ["x", 2]).ok).toBe(true);
+    expect(validate(t, ["x", 2, "z"]).ok).toBe(true);
+    expect(validate(t, ["x"]).ok).toBe(false);
+    expect(validate(t, ["x", 2, 999]).ok).toBe(false);
   });
 
   it("tuple(A,B,many(C)) adds a rest tail with min=2 and no max", () => {
@@ -236,9 +236,9 @@ describe("types.tuple() sugar", () => {
     });
     expect(rest).toBeTruthy();
 
-    expect(validate(t, ["a", 1]).status).toBe("valid");
-    expect(validate(t, ["a", 1, "c", "d"]).status).toBe("valid");
-    expect(validate(t, ["a", 1, 2]).status).toBe("invalid"); // rest must be C
+    expect(validate(t, ["a", 1]).ok).toBe(true);
+    expect(validate(t, ["a", 1, "c", "d"]).ok).toBe(true);
+    expect(validate(t, ["a", 1, 2]).ok).toBe(false); // rest must be C
   });
 
   it("tuple() layout rules: optional must be trailing; many must be last", () => {

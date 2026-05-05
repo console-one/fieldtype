@@ -154,7 +154,7 @@ describe("toJSON()/fromJSON()", () => {
     });
 
     // quick validation smoke: our tuple accepts ["x", 1]
-    expect(validate(t, ["x", 1]).status).toBe("valid");
+    expect(validate(t, ["x", 1]).ok).toBe(true);
   });
 
   it("passes through array.contains without $ref (by design in current adapter), but still discoverable via deps()", () => {
@@ -231,10 +231,10 @@ describe("FTAdapter (wire) – event round-trip, chain mode", () => {
 
     expect(rebuilt.metadata).toEqual({ patch: 1, audit: true });
 
-    expect(validate(rebuilt, "xx")).toEqual({ status: "valid" });
+    expect(validate(rebuilt, "xx")).toEqual({ ok: true });
     expect(validate(rebuilt, "x")).toEqual({
-      status: "invalid",
-      errors: expect.any(Array),
+      ok: false,
+      faults: expect.any(Array),
     });
   });
 });
@@ -266,7 +266,7 @@ describe("FTAdapter (wire) – snapshot mode", () => {
     expect(rebuilt.metadata).toEqual({ a: 2, b: 3 });
 
     // Behavior identical to original
-    expect(validate(rebuilt, "xx").status).toBe("valid");
-    expect(validate(rebuilt, "x").status).toBe("invalid");
+    expect(validate(rebuilt, "xx").ok).toBe(true);
+    expect(validate(rebuilt, "x").ok).toBe(false);
   });
 });

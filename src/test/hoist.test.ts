@@ -211,7 +211,7 @@ describe("Hoist compiler + FieldType handler", () => {
     expect(dT.body).toContain(dN.name);
 
     // round-trip smoke: ensure original tuple still validates ["xx", 1]
-    expect(validate(Tup, ["xx", 1]).status).toBe("valid");
+    expect(validate(Tup, ["xx", 1]).ok).toBe(true);
   });
 
   it("aggregation modes: 'array' dedups values; 'object' shallow merges", () => {
