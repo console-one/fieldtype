@@ -130,6 +130,15 @@ export type FluentCommon<T extends BaseFT> = {
   solve(opts?: { objective?: string | ((constraint: any) => unknown); reason?: string }): Augment<T>;
   label(value: ConstraintRefValue<string>, match: FieldType, opts?: { path?: string; reason?: string }): Augment<T>;
   callable(opts?: { reason?: string }): Augment<T>;
+  claim(claimtype: string, opts?: {
+    lhs?: string;
+    rhs?: string;
+    args?: readonly unknown[];
+    scope?: string;
+    temporal?: unknown;
+    confidence?: number;
+    reason?: string;
+  }): Augment<T>;
 };
 
 export type FluentString<T extends BaseFT> = {
@@ -182,6 +191,10 @@ export type FluentNot<T extends BaseFT> = { of(child: FieldType): Augment<T> };
 export type FluentFunction<T extends BaseFT> = {
   param(value: FieldType, reason?: string): Augment<T>;
   returns(value: FieldType, reason?: string): Augment<T>;
+  impl(id: string, reason?: string): Augment<T>;
+  identity(outputPath: string, inputPath: string, reason?: string): Augment<T>;
+  preserves(inputPath: string, outputPath?: string, reason?: string): Augment<T>;
+  temporal(dir: "gt" | "lt", lhs: string, bound: unknown, reason?: string): Augment<T>;
 };
 
 /** Public alias used elsewhere */
@@ -397,6 +410,21 @@ export const Modifiers = {
     callable<T extends string, A, E>(draft: Draft<T, A, E>, opts?: { reason?: string }) {
       return draft.update({ type: "draftpatch", attributes: [ConstraintTypes.any.callable.create(opts) as any] });
     },
+    claim<T extends string, A, E>(
+      draft: Draft<T, A, E>,
+      claimtype: string,
+      opts?: {
+        lhs?: string;
+        rhs?: string;
+        args?: readonly unknown[];
+        scope?: string;
+        temporal?: unknown;
+        confidence?: number;
+        reason?: string;
+      },
+    ) {
+      return draft.update({ type: "draftpatch", attributes: [ConstraintTypes.any.claim.create(claimtype, opts) as any] });
+    },
   },
 
   string: {
@@ -604,6 +632,30 @@ export const Modifiers = {
         attributes: [ConstraintTypes.function.returns.create(value.save(), reason) as any],
       });
     },
+    impl<T extends string, A, E>(d: Draft<T, A, E>, id: string, reason?: string) {
+      return d.update({
+        type: "draftpatch",
+        attributes: [ConstraintTypes.function.impl.create(id, reason) as any],
+      });
+    },
+    identity<T extends string, A, E>(d: Draft<T, A, E>, outputPath: string, inputPath: string, reason?: string) {
+      return d.update({
+        type: "draftpatch",
+        attributes: [ConstraintTypes.function.identity.create(outputPath, inputPath, reason) as any],
+      });
+    },
+    preserves<T extends string, A, E>(d: Draft<T, A, E>, inputPath: string, outputPath?: string, reason?: string) {
+      return d.update({
+        type: "draftpatch",
+        attributes: [ConstraintTypes.function.preserves.create(inputPath, outputPath, reason) as any],
+      });
+    },
+    temporal<T extends string, A, E>(d: Draft<T, A, E>, dir: "gt" | "lt", lhs: string, bound: unknown, reason?: string) {
+      return d.update({
+        type: "draftpatch",
+        attributes: [ConstraintTypes.function.temporal.create(dir, lhs, bound, reason) as any],
+      });
+    },
   },
 } as const;
 
@@ -636,6 +688,7 @@ function attachHelpers<T extends FieldType>(node: T): T {
   base.solve = (opts?: any) => (Modifiers.any.solve(ensureDraft(), opts), base);
   base.label = (v: any, match: any, opts?: any) => (Modifiers.any.label(ensureDraft(), v, match, opts), base);
   base.callable = (opts?: any) => (Modifiers.any.callable(ensureDraft(), opts), base);
+  base.claim = (claimtype: string, opts?: any) => (Modifiers.any.claim(ensureDraft(), claimtype, opts), base);
 
   base.meta = (m: any) => {
     Modifiers.any.meta(ensureDraft(), m);
@@ -731,6 +784,22 @@ function attachHelpers<T extends FieldType>(node: T): T {
       );
       base.returns = (v: FieldType, r?: string) => (
         Modifiers.function.returns(ensureDraft(), v, r),
+        base
+      );
+      base.impl = (id: string, r?: string) => (
+        Modifiers.function.impl(ensureDraft(), id, r),
+        base
+      );
+      base.identity = (outPath: string, inPath: string, r?: string) => (
+        Modifiers.function.identity(ensureDraft(), outPath, inPath, r),
+        base
+      );
+      base.preserves = (inputPath: string, outputPath?: string, r?: string) => (
+        Modifiers.function.preserves(ensureDraft(), inputPath, outputPath, r),
+        base
+      );
+      base.temporal = (dir: "gt" | "lt", lhs: string, bound: unknown, r?: string) => (
+        Modifiers.function.temporal(ensureDraft(), dir, lhs, bound, r),
         base
       );
       break;

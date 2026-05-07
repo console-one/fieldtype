@@ -212,6 +212,27 @@ export type TemporalConstraint = AnyTypeConstraint<
   }
 >;
 
+/**
+ * ClaimConstraint — serializable semantic claim vocabulary.
+ *
+ * FieldType owns the declaration only. Runtime substrates such as HEAD
+ * or sequence decide whether/how a claim is observed, propagated, scored,
+ * or enforced over time.
+ */
+export type ClaimConstraint = AnyTypeConstraint<
+  "claim",
+  {
+    claimtype: string;
+    lhs?: string;
+    rhs?: string;
+    args?: readonly unknown[];
+    scope?: string;
+    temporal?: unknown;
+    confidence?: number;
+    reason?: string;
+  }
+>;
+
 /* ---------- OBJECT constraints ---------------------------------- */
 
 export type ObjectTypeConstraint<
@@ -372,6 +393,30 @@ export type FunctionReturnsConstraint = FunctionTypeConstraint<
   { value: BaseFieldType; reason?: string }
 >;
 
+/** Serializable interpreter/capability identifier. Not a live closure. */
+export type FunctionImplConstraint = FunctionTypeConstraint<
+  "impl",
+  { id: string; reason?: string }
+>;
+
+/** VALUE-level equality between paths in the function bindings namespace. */
+export type FunctionIdentityConstraint = FunctionTypeConstraint<
+  "identity",
+  { outputPath: string; inputPath: string; reason?: string }
+>;
+
+/** Type-level conservation from input constraints into output constraints. */
+export type FunctionPreservesConstraint = FunctionTypeConstraint<
+  "preserves",
+  { inputPath: string; outputPath?: string; reason?: string }
+>;
+
+/** Temporal bound over function input/output time expressions. */
+export type FunctionTemporalConstraint = FunctionTypeConstraint<
+  "temporal",
+  { dir: "gt" | "lt"; lhs: string; bound: unknown; reason?: string }
+>;
+
 /**
  * FunctionProjectionConstraint — declares how a function's output constraint
  * can be projected backwards through an inverse to derive input constraints.
@@ -406,9 +451,10 @@ export type BehavioralConstraint =
   | CallableConstraint
   | MountConstraint
   | CallConstraint
-  | TemporalConstraint;
+  | TemporalConstraint
+  | ClaimConstraint;
 
-export type AnyConstraint = LiteralConstraint | ReturnTypeConstraint | RefConstraint | CallConstraint | TemporalConstraint;
+export type AnyConstraint = LiteralConstraint | ReturnTypeConstraint | RefConstraint | CallConstraint | TemporalConstraint | ClaimConstraint;
 
 export type ObjectConstraint =
   | ObjectPropertyConstraint
@@ -443,6 +489,10 @@ export type StringConstraint =
 export type FunctionConstraint =
   | FunctionParamConstraint
   | FunctionReturnsConstraint
+  | FunctionImplConstraint
+  | FunctionIdentityConstraint
+  | FunctionPreservesConstraint
+  | FunctionTemporalConstraint
   | FunctionProjectionConstraint
   | AnyConstraint;
 
@@ -599,6 +649,32 @@ export const ConstraintTypes = {
         return ConstraintTypes.create("temporal", "any", { after, value, reason: opts?.reason }) as TemporalConstraint;
       },
       describes: behavioralDescribes<TemporalConstraint>("temporal"),
+    },
+    claim: {
+      create(
+        claimtype: string,
+        opts: {
+          lhs?: string;
+          rhs?: string;
+          args?: readonly unknown[];
+          scope?: string;
+          temporal?: unknown;
+          confidence?: number;
+          reason?: string;
+        } = {},
+      ): ClaimConstraint {
+        return ConstraintTypes.create("claim", "any", {
+          claimtype,
+          lhs: opts.lhs,
+          rhs: opts.rhs,
+          args: opts.args,
+          scope: opts.scope,
+          temporal: opts.temporal,
+          confidence: opts.confidence,
+          reason: opts.reason,
+        }) as ClaimConstraint;
+      },
+      describes: behavioralDescribes<ClaimConstraint>("claim"),
     },
     /* category‑wide helpers */
     create<
@@ -1003,6 +1079,38 @@ export const ConstraintTypes = {
         return ConstraintTypes.function.describes(i) && i.constrainttype === "returns";
       },
     },
+    impl: {
+      create(id: string, reason?: string): FunctionImplConstraint {
+        return ConstraintTypes.create("impl", "function", { id, reason }) as FunctionImplConstraint;
+      },
+      describes(i: any): i is FunctionImplConstraint {
+        return ConstraintTypes.function.describes(i) && i.constrainttype === "impl";
+      },
+    },
+    identity: {
+      create(outputPath: string, inputPath: string, reason?: string): FunctionIdentityConstraint {
+        return ConstraintTypes.create("identity", "function", { outputPath, inputPath, reason }) as FunctionIdentityConstraint;
+      },
+      describes(i: any): i is FunctionIdentityConstraint {
+        return ConstraintTypes.function.describes(i) && i.constrainttype === "identity";
+      },
+    },
+    preserves: {
+      create(inputPath: string, outputPath?: string, reason?: string): FunctionPreservesConstraint {
+        return ConstraintTypes.create("preserves", "function", { inputPath, outputPath, reason }) as FunctionPreservesConstraint;
+      },
+      describes(i: any): i is FunctionPreservesConstraint {
+        return ConstraintTypes.function.describes(i) && i.constrainttype === "preserves";
+      },
+    },
+    temporal: {
+      create(dir: "gt" | "lt", lhs: string, bound: unknown, reason?: string): FunctionTemporalConstraint {
+        return ConstraintTypes.create("temporal", "function", { dir, lhs, bound, reason }) as FunctionTemporalConstraint;
+      },
+      describes(i: any): i is FunctionTemporalConstraint {
+        return ConstraintTypes.function.describes(i) && i.constrainttype === "temporal";
+      },
+    },
     projection: {
       create(inverse: any, combiner: string, identity: number): FunctionProjectionConstraint {
         return ConstraintTypes.create("projection", "function", { inverse, combiner, identity }) as FunctionProjectionConstraint;
@@ -1045,7 +1153,7 @@ export const ConstraintTypes = {
 
 /** The constrainttype values that identify behavioral (pairing demand) constraints. */
 export const BEHAVIORAL_CONSTRAINT_TYPES = [
-  'merge', 'persist', 'compact', 'subscribe', 'fork', 'visibility', 'decorator', 'autoMerge', 'solve', 'label', 'callable', 'mount', 'call', 'temporal',
+  'merge', 'persist', 'compact', 'subscribe', 'fork', 'visibility', 'decorator', 'autoMerge', 'solve', 'label', 'callable', 'mount', 'call', 'temporal', 'claim',
 ] as const;
 
 export type BehavioralConstraintType = typeof BEHAVIORAL_CONSTRAINT_TYPES[number];
@@ -1125,4 +1233,3 @@ export function substituteConstraintRefs(
     unresolvedRefs,
   };
 }
-

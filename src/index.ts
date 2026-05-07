@@ -7,7 +7,8 @@ export type {
   FieldConstraintType, BehavioralConstraint, BehavioralConstraintType,
   MergeConstraint, PersistConstraint, CompactConstraint,
   SubscribeConstraint, ForkConstraint, VisibilityConstraint, DecoratorConstraint, AutoMergeConstraint,
-  MountConstraint,
+  MountConstraint, ClaimConstraint,
+  FunctionImplConstraint, FunctionIdentityConstraint, FunctionPreservesConstraint, FunctionTemporalConstraint,
 } from "./constraint.js";
 export { FieldTypeBuilder, types, extensionof, zodToFieldType } from "./builders.js";
 export { validate } from "./validate.js";

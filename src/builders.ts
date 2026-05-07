@@ -4,8 +4,13 @@ import {
   ArrayContainsConstraint,
   ArrayIndexRange,
   ArrayNamedConstraint,
+  ClaimConstraint,
   ConstraintTypes,
   FieldConstraintType,
+  FunctionIdentityConstraint,
+  FunctionImplConstraint,
+  FunctionPreservesConstraint,
+  FunctionTemporalConstraint,
   LiteralConstraint,
   NumberConstraint,
   ObjectConstraint,
@@ -29,6 +34,9 @@ import type { Shaped, Elemented, Varianted, Composed, Functioned } from "./infer
 
 import { FieldTypePatchEvent } from "./event.js";
 import { FieldTypeError } from "./error.js";
+import { validate as validateRuntime } from "./validate.js";
+
+type ValidationError = { path: (string | number)[]; message: string };
 
 /** @deprecated Use `types.*` builders instead (e.g. `types.string()`, `types.object({...})`). */
 export class FieldTypeBuilder<T extends FieldType = FieldType> {
@@ -493,7 +501,7 @@ function walk(
       ) as FieldType[];
       if (
         !orTypeAttributes.some(
-          (child) => validate(child, val).status === "valid",
+          (child) => validateRuntime(child, val).ok,
         )
       )
         out.push({ path, message: "no OR branch matched" });
@@ -510,7 +518,7 @@ function walk(
       let notTypeAttributes: FieldType[] = n.attributes.filter((attr) =>
         FieldType.describes(attr),
       ) as FieldType[];
-      if (validate(notTypeAttributes[0], val).status === "valid")
+      if (validateRuntime(notTypeAttributes[0], val).ok)
         out.push({ path, message: "negated type matched" });
       break;
 
@@ -809,9 +817,10 @@ function ensureAttr(node: FieldType, attr: FieldConstraintType) {
     node.fieldtype === "number" ||
     node.fieldtype === "object" ||
     node.fieldtype === "array" ||
-    node.fieldtype === "any"
+    node.fieldtype === "any" ||
+    node.fieldtype === "function"
   ) {
-    (node.attributes ??= []).push(attr as any);
+    ((node as any).attributes ??= []).push(attr as any);
   } else {
     throw new FieldTypeError('INVALID_CONSTRAINT', `'${node.fieldtype}' cannot accept attributes`, undefined, { fieldtype: node.fieldtype });
   }
@@ -1045,11 +1054,84 @@ export const attrs = (...item: any[]) => {
   return { attributes: [...item] };
 };
 
+type FnSpec<I extends FieldType = FieldType, O extends FieldType = FieldType> = {
+  input?: I;
+  output?: O;
+  impl?: string;
+  identity?: [string, string][];
+  preserves?: "*" | [string, string?][];
+  temporal?: ["gt" | "lt", string, unknown][];
+  description?: string;
+};
+
 function fn<I extends FieldType, O extends FieldType>(input: I, output: O): Functioned<I, O>;
+function fn<I extends FieldType, O extends FieldType>(spec: FnSpec<I, O>): Functioned<I, O>;
 function fn(input: FieldType, output: FieldType): FunctionType;
-function fn(input: FieldType, output: FieldType): any {
-  return FieldType.function.create().param(input).returns(output).save();
+function fn(spec: FnSpec): FunctionType;
+function fn(inputOrSpec: FieldType | FnSpec, output?: FieldType): any {
+  const spec: FnSpec = FieldType.describes(inputOrSpec)
+    ? { input: inputOrSpec, output }
+    : inputOrSpec;
+  let out = FieldType.function.create();
+  if (spec.input) out = out.param(spec.input);
+  if (spec.output) out = out.returns(spec.output);
+  if (spec.impl) out = out.impl(spec.impl);
+  if (spec.identity) {
+    for (const [outputPath, inputPath] of spec.identity) {
+      out = out.identity(outputPath, inputPath);
+    }
+  }
+  if (spec.preserves === "*") {
+    out = out.preserves("*");
+  } else if (Array.isArray(spec.preserves)) {
+    for (const [inputPath, outputPath] of spec.preserves) {
+      out = out.preserves(inputPath, outputPath);
+    }
+  }
+  if (spec.temporal) {
+    for (const [dir, lhs, bound] of spec.temporal) {
+      out = out.temporal(dir, lhs, bound);
+    }
+  }
+  if (spec.description) out = out.meta({ description: spec.description });
+  return out.save();
 }
+
+const fnt = {
+  impl: (id: string, reason?: string): FunctionImplConstraint =>
+    ConstraintTypes.function.impl.create(id, reason),
+  identity: (outputPath: string, inputPath: string, reason?: string): FunctionIdentityConstraint =>
+    ConstraintTypes.function.identity.create(outputPath, inputPath, reason),
+  preserves: (inputPath: string, outputPath?: string, reason?: string): FunctionPreservesConstraint =>
+    ConstraintTypes.function.preserves.create(inputPath, outputPath, reason),
+  temporal: (dir: "gt" | "lt", lhs: string, bound: unknown, reason?: string): FunctionTemporalConstraint =>
+    ConstraintTypes.function.temporal.create(dir, lhs, bound, reason),
+};
+
+const claim = {
+  create: (
+    claimtype: string,
+    opts?: {
+      lhs?: string;
+      rhs?: string;
+      args?: readonly unknown[];
+      scope?: string;
+      temporal?: unknown;
+      confidence?: number;
+      reason?: string;
+    },
+  ): ClaimConstraint => ConstraintTypes.any.claim.create(claimtype, opts),
+  identity: (
+    lhs: string,
+    rhs: string,
+    opts?: {
+      scope?: string;
+      temporal?: unknown;
+      confidence?: number;
+      reason?: string;
+    },
+  ): ClaimConstraint => ConstraintTypes.any.claim.create("identity", { ...opts, lhs, rhs }),
+};
 
 export const extensionof = ((other: FieldType, item: any, opts?: any) => {
   return FieldType.compose(other, types.from(item));
@@ -1089,6 +1171,8 @@ export const types = {
   max,
   str,
   num,
+  fnConstraints: fnt,
+  claim,
   literal,
   or,
   and,
