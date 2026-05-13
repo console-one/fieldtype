@@ -1,43 +1,3 @@
-
-
-
-
-
-import {  } from "@/components/ArchiveFilter";
-import { collectTags, getFeed } from "@/lib/feed";
-
-
-export default function TabularData(datafeeduri) {
-  const items = setState(subscribe(datafeeduri));
-  const tags = collectTags(items);
-
-  return (<>
-
-  <>)
-}
-
-
-export default function PromptComponent(source, statemap) {
-  const md = setState(subscribe(source));
-  const feed = setState(subscribe(statemap));
-  const 
-  const tags = collectTags(items);
-  return <MDXRemote
-        source={body}
-        components={mdxComponents}
-        options={{ mdxOptions }}
-    />
-}
-
-
-
-
-## Hello world!
-
-
-```ts
-
-workflow.compile(`
 ---
 updating: [[ session.instance_name : system-pre-ex ]]
 update-time: [[ now : system-pre-ex ]]
@@ -50,22 +10,9 @@ summary?: [[ update-summary :  agent | system-pre-ex ]]
 <SpaceUpdates stats=[[ topic-summaries : agent  ]]/>
 <AgentSummary stats=[[ agent_summary_stats : system-post-ex  ]]/>
 <LinksSummary states=[[ linked_content : system-post-ex ]]>
-`, {
-    components: mdxComponents,
-    stages: [
-        ["system-pre-ex", {
-            subscribe() {
 
-            }
-        },
-        ...]
-    ]
-})
-
-```
-
-
-
+<!-- Some notes showing an example document: 
+ 
 ---
 updates-for: Andrew - Macbook Sessions
 update-time: 2026-04-30 03:30:01 
@@ -82,29 +29,19 @@ Activity Update for [[ user_key_name ]] - [[
     for these particular resources 
 ]] - until [[ update-until-time ]]
 --- 
-
 [[ local_concept_subscriptions_stats ]]
 
 
-
-
 ```ft 
-[[ GitHub token : ghp_... from https://github.com/settings/tokens ]]   
-[[ OpenAI API key : sk-... from https://platform.openai.com/api-keys ]]
-
+[[ GitHub token : ghp_... from https://github.com/settings/tokens ]]   // transclusion
+[[ OpenAI API key : sk-... from https://platform.openai.com/api-keys ]] // transclusion
 type that = any          
-
 type this = () -> [      
-
     import { ChatConfigScope } from './schemas'  // if that happens to be correct and we actually know where it is.  
-   
-    concrete configs: ChatConfigScope; // require concrete implementation of *type* ChatConfigScope to proceed    
-    
+    concrete configs: ChatConfigScope; // require concrete implementation of *type* ChatConfigScope to proceed        
     concrete messageStatusTypes = configs.chatstatustypes | ('idle' | 'streaming' |  'disposed')              
     ...[[ expand: ship transition with tracking number ]]
 ]
-
 export that;
-
-
-```
+``` 
+-->

@@ -1,10 +1,11 @@
 
+
 import { typetype } from 'stdlib'
 
+// I would be ecstatic to be able to define functional types that work in way like below
 type userID = object << [[userID: "User id type" ]]
 type verifier = ((input: userID, key: any) -> admissibility) << [[admissibilityCheck: "Admisibility Check" ]]
 type narrative = string
-
 
 type createTopicInputs = [
     type user = userID
@@ -14,6 +15,13 @@ type createTopicInputs = [
     export [
         = string & lt(chars, 120)
         << ([ description = narrative & lt(chars, 300) ] | [])
-        << ([ key = narrative & lt(chars, 300) ] | []])
+        << ([ key = narrative & lt(chars, 300) ] | [])
     ]
 ]
+
+
+export [
+    concrete inputs = createTopicInputs
+    concrete outputs = object
+]
+

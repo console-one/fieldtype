@@ -18,6 +18,7 @@ export type FieldTypeErrorCode =
   | 'INTERNAL';
 
 export class FieldTypeError extends Error {
+
   constructor(
     public readonly code: FieldTypeErrorCode,
     message: string,
@@ -27,4 +28,5 @@ export class FieldTypeError extends Error {
     super(message);
     this.name = 'FieldTypeError';
   }
+  
 }

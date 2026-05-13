@@ -1,25 +1,20 @@
 
+
+import { join, omit, pick, ref, pwd } from 'stdlib'
+import { string, object, returnType, max } from 'types'
+
 type that = any
-
-
-type three = [
-    ...string,
-
-]
-
 type this = () -> [
 
     import { ChatConfigScope } from './schemas'// if that happens to be correct and we actually know where it is.
     concrete configs: ChatConfigScope; // require concrete implementation of *type* ChatConfigScope to proceed 
     concrete messageStatusTypes = configs.chatstatustypes | ('idle' | 'streaming' | 'disposed')
-
     type status = (string << messageStatusTypes )
     concrete chatID = string
 
     concrete headState = ((chatID: string) -> [
-        [[ Does this do anyhing? :  term two ]]
         concrete chatpath = join('chats', chatID) 
-        concrete resolution = ref(chatpath, { messages: ([...ChatMessage] & max 25), snapshots: [...ChatState] & max 5 }, path: returnType(pwd()) );
+        concrete resolution = ref(chatpath, { messages: ([...ChatMessage] & max(25)), snapshots: ([...ChatState] & max(5)) }, path: returnType(pwd()) );
         type topState = resolution.messages[-1]
         type characterlimit = configs.characterLimit | 50000
         type load = (message) -> [
@@ -43,7 +38,7 @@ type this = () -> [
             concrete body = omit(body, 'prevMessageState') & omit(body, 'prevSnapshotState'), 
             concrete idx = pick(body, 'prevMessageState') & pick(body, 'prevSnapshotState') && pick(resolution, 'path') 
         ] 
-    ] : )
+    ] : object(any))
 
     export headState
 ] : 

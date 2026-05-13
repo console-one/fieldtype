@@ -84,10 +84,10 @@ export type BaseFieldType<
 
 /* ---------- Fluent helper typing (types only) -------------------- */
 
-type BaseFT = BaseFieldType<any, any>;
+export type BaseFT = BaseFieldType<any, any>;
 
 /** Compute the fully-augmented fluent type for a given base type T */
-type Augment<T extends BaseFT> = T["fieldtype"] extends "string"
+export type Augment<T extends BaseFT> = T["fieldtype"] extends "string"
   ? T & FluentCommon<T> & FluentString<T>
   : T["fieldtype"] extends "number"
     ? T & FluentCommon<T> & FluentNumber<T>

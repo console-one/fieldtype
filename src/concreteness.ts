@@ -1,7 +1,6 @@
 import * as find from './find.js';
 import { ConstraintTypes } from './constraint.js';
 import { cloneType, FieldType, literalFromAttributes } from './type.js';
-import { FieldTypePatchEvent } from './event.js';
 
 export function extractLiterals(ft: FieldType): unknown {
     const r = concreteness(ft);
